@@ -5,7 +5,7 @@ version: 1.0.0
 metadata:
   openclaw:
     emoji: "📅"
-    homepage: https://github.com/une/course-schedule-import
+    homepage: https://github.com/beadog1214/course-schedule-import
     requires:
       bins:
         - python3
