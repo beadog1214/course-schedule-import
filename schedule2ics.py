@@ -164,6 +164,29 @@ def ocr_plain(image_path: str) -> str:
         return ""
 
 
+def detect_semester(text: str) -> tuple:
+    """从 OCR 文字中捕捉学年学期，如 '2025-2026学年第二学期' → ('2025-2026', '2')"""
+    # 模式: "2025-2026学年第2学期" 或 "2025-2026学年第二学期"
+    m = re.search(r'(\d{4})\s*[-~～]\s*(\d{4})\s*学[年期].*?第\s*(\d|[一二三四五六七八九十])\s*学[年期]', text)
+    if m:
+        y1, y2, sem = m.group(1), m.group(2), m.group(3)
+        cn = {"一":"1","二":"2","三":"3","四":"4","五":"5","六":"6","七":"7","八":"8","九":"9","十":"10"}
+        sem = cn.get(sem, sem)
+        return (f"{y1}-{y2}", sem)
+    # 模式: "2025-2026-2"
+    m = re.search(r'(\d{4})\s*[-~～]\s*(\d{4})\s*[-~～]\s*(\d)', text)
+    if m:
+        return (f"{m.group(1)}-{m.group(2)}", m.group(3))
+    # 模式: 单独的 "2026年春季学期"
+    m = re.search(r'(\d{4}).*?春', text)
+    if m:
+        return (f"{int(m.group(1))-1}-{m.group(1)}", "2")
+    m = re.search(r'(\d{4}).*?秋', text)
+    if m:
+        return (f"{m.group(1)}-{int(m.group(1))+1}", "1")
+    return ("", "")
+
+
 def detect_slots(text: str) -> dict:
     """从 OCR 文字中自动捕捉节次时间，如 '1-2节 8:00-9:40'"""
     found = {}
@@ -308,13 +331,25 @@ if __name__ == "__main__":
     else:
         print("  (未识别到文字，进入纯手动模式)")
 
-    # 3) 自动捕捉时间槽
+    # 3) 自动捕捉学年学期
+    if not args.year or not args.semester:
+        auto_year, auto_sem = detect_semester(text)
+        if auto_year and not args.year:
+            args.year = auto_year
+        if auto_sem and not args.semester:
+            args.semester = auto_sem
+    if not args.year:
+        args.year = input("学年？如 2025-2026\n> ").strip()
+    if not args.semester:
+        args.semester = input("第几学期？(1 或 2)\n> ").strip()
+
+    # 4) 自动捕捉时间槽
     detected = detect_slots(text)
     if detected:
         slots.update(detected)
         json.dump(slots, open(SLOTS_CONFIG, "w"), ensure_ascii=False, indent=2)
 
-    # 4) 交互式确认/修改
+    # 5) 交互式确认/修改
     print(f"\n📅 当前节次时间配置：")
     for k in sorted(slots.keys(), key=lambda x: int(x.split("-")[0])):
         s, e = slots[k]
