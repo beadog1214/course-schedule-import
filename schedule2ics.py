@@ -261,7 +261,9 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="课表图片 → iOS 日历 .ics")
     ap.add_argument("file", help="课表文件路径 (PNG/JPG/PDF/DOCX)")
-    ap.add_argument("--name", default="课表", help="日历名称")
+    ap.add_argument("--name", default="课表", help="学生姓名")
+    ap.add_argument("--year", default="", help="学年，如 2025-2026")
+    ap.add_argument("--semester", default="", help="学期，如 1 或 2")
     ap.add_argument("--start", default="2026-02-23", help="学期第一天（周一）YYYY-MM-DD")
     ap.add_argument("--weeks", type=int, default=18, help="总周数")
     ap.add_argument("--out", help="输出 .ics 路径")
@@ -367,9 +369,14 @@ if __name__ == "__main__":
         sys.exit(0)
 
     start = datetime.date.fromisoformat(args.start)
-    ics = generate_ics(courses, start, slots, args.name)
+    # 日历名称：学年+学期 或 回退到 name
+    if args.year and args.semester:
+        cal_name = f"{args.year}学年第{args.semester}学期课表"
+    else:
+        cal_name = args.name
+    ics = generate_ics(courses, start, slots, cal_name)
 
-    out_path = args.out or f"{Path.home()}/Downloads/{args.name}.ics"
+    out_path = args.out or f"{Path.home()}/Downloads/{cal_name}.ics"
     with open(out_path, "w") as f:
         f.write(ics)
 
