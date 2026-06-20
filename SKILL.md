@@ -1,7 +1,7 @@
 ---
 name: course-schedule-import
 description: 拍课表截图 → OCR → .ics 日历文件，AirDrop 到 iPhone 直接用。全平台 tesseract 引擎。
-version: 1.1.0
+version: 1.2.0
 metadata:
   openclaw:
     emoji: "📅"
