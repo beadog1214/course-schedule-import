@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-课表图片/PDF → iOS 日历 .ics 文件
-用法: python3 schedule2ics.py <图片路径> [--name 姓名] [--start 2026-02-23]
+课表图片/PDF/Word → iOS/Android 日历 .ics 文件
+用法: python3 schedule2ics.py <文件路径> [--name 姓名] [--start 2026-02-23]
+支持: PNG JPG PDF DOCX
 """
 
 import json, os, re, subprocess, sys, datetime, tempfile
@@ -24,18 +25,113 @@ DAY_MAP = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6}
 DAY_NAMES = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
 
-def ocr_tesseract(image_path: str) -> str:
-    """tesseract OCR（跨平台回退方案）"""
+def extract_text(filepath: str) -> str:
+    """根据文件类型提取文字：图片OCR / PDF文本 / PDF转图OCR / Word文本"""
+    ext = Path(filepath).suffix.lower()
+
+    if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif', '.webp'):
+        return ocr_plain(filepath)
+
+    if ext == '.pdf':
+        # 先试直接提取文本
+        text = _pdf_text(filepath)
+        if text.strip():
+            return text
+        # 扫面件PDF，转图片OCR
+        print("  PDF 无文本层，转图片 OCR...")
+        imgs = _pdf_to_images(filepath)
+        if imgs:
+            all_text = []
+            for i, img in enumerate(imgs):
+                print(f"  OCR 第 {i+1}/{len(imgs)} 页...")
+                t = ocr_image(img)
+                if t.strip():
+                    all_text.append(t)
+                os.remove(img)
+            return "\n".join(all_text)
+        return ""
+
+    if ext == '.docx':
+        return _docx_text(filepath)
+
+    print(f"  ⚠ 不支持的文件类型: {ext}")
+    return ""
+
+
+def _pdf_text(filepath: str) -> str:
+    """pdfplumber 提取 PDF 文本"""
     try:
-        result = subprocess.run(
-            ["tesseract", image_path, "stdout", "-l", "chi_sim+eng", "--psm", "6"],
-            capture_output=True, text=True, timeout=30
-        )
-        return result.stdout
+        import pdfplumber
+        lines = []
+        with pdfplumber.open(filepath) as pdf:
+            for page in pdf.pages:
+                t = page.extract_text()
+                if t:
+                    lines.append(t)
+        return "\n".join(lines)
+    except ImportError:
+        print("  ⚠ pdfplumber 未安装，尝试 pdftotext...")
+        return _pdftotext(filepath)
+
+
+def _pdftotext(filepath: str) -> str:
+    """pdftotext 命令行回退"""
+    try:
+        r = subprocess.run(["pdftotext", "-layout", filepath, "-"], capture_output=True, text=True, timeout=30)
+        return r.stdout
     except FileNotFoundError:
-        raise RuntimeError("tesseract 未安装，请运行: brew install tesseract tesseract-lang")
-    except Exception as e:
-        raise RuntimeError(f"tesseract OCR 失败: {e}")
+        print("  ⚠ pdftotext 也未安装")
+        print("    安装: pip install pdfplumber  或  brew install poppler")
+        return ""
+
+
+def _pdf_to_images(filepath: str) -> list:
+    """PDF 转 PNG 图片列表（用于扫描件 OCR）"""
+    try:
+        import fitz  # PyMuPDF
+        imgs = []
+        doc = fitz.open(filepath)
+        for i, page in enumerate(doc):
+            pix = page.get_pixmap(dpi=200)
+            tmp = f"{tempfile.gettempdir()}/pdf_page_{i}.png"
+            pix.save(tmp)
+            imgs.append(tmp)
+        return imgs
+    except ImportError:
+        pass
+    # pdftoppm 回退
+    try:
+        prefix = f"{tempfile.gettempdir()}/pdf_page"
+        subprocess.run(["pdftoppm", "-png", "-r", "200", filepath, prefix], check=True, capture_output=True)
+        return sorted(Path(tempfile.gettempdir()).glob("pdf_page*.png"))
+    except:
+        return []
+
+
+def _docx_text(filepath: str) -> str:
+    """python-docx 提取 Word 文本"""
+    try:
+        from docx import Document
+        doc = Document(filepath)
+        lines = []
+        for para in doc.paragraphs:
+            if para.text.strip():
+                lines.append(para.text.strip())
+        # 也读表格
+        for table in doc.tables:
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                lines.append(" | ".join(cells))
+        return "\n".join(lines)
+    except ImportError:
+        print("  ⚠ python-docx 未安装")
+        print("    pip install python-docx")
+        return ""
+
+
+def ocr_image(image_path: str) -> str:
+    """单张图片 OCR，复用 ocr_plain 逻辑"""
+    return ocr_plain(image_path)
 
 
 def ocr_plain(image_path: str) -> str:
@@ -164,7 +260,7 @@ def generate_ics(courses: list, start_date: datetime.date, slots: dict, cal_name
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="课表图片 → iOS 日历 .ics")
-    ap.add_argument("image", help="课表图片路径")
+    ap.add_argument("file", help="课表文件路径 (PNG/JPG/PDF/DOCX)")
     ap.add_argument("--name", default="课表", help="日历名称")
     ap.add_argument("--start", default="2026-02-23", help="学期第一天（周一）YYYY-MM-DD")
     ap.add_argument("--weeks", type=int, default=18, help="总周数")
@@ -194,8 +290,9 @@ if __name__ == "__main__":
                 if len(times) == 2:
                     slots[key.strip()] = (times[0].strip(), times[1].strip())
 
-    print(f"📷 OCR 识别中...")
-    text = ocr_plain(args.image)
+    ftype = Path(args.file).suffix.upper()
+    print(f"📄 识别中 ({ftype})...")
+    text = extract_text(args.file)
     # 过滤明显损坏的 OCR 输出（纯乱码）
     clean = text.strip()
     chinese_chars = len(re.findall(r'[一-鿿]', clean))

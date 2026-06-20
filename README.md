@@ -25,6 +25,12 @@ apt install tesseract-ocr tesseract-ocr-chi-sim
 tesseract --list-langs | grep chi_sim
 ```
 
+## 额外依赖（可选，处理 PDF/Word 用）
+
+```bash
+pip install pdfplumber python-docx PyMuPDF
+```
+
 ## 使用
 
 ```bash
@@ -32,6 +38,8 @@ git clone https://github.com/beadog1214/course-schedule-import.git
 cd course-schedule-import
 python3 schedule2ics.py 课表.jpg --name "课表" --start 2026-02-23
 ```
+
+支持 PNG JPG PDF DOCX，脚本自动识别文件类型。PDF 优先读文本，扫面件自动转图片 OCR。
 
 脚本会显示 OCR 认出来的字，然后按提示输课程：
 

@@ -1,7 +1,7 @@
 ---
 name: course-schedule-import
 description: 拍课表截图 → OCR → .ics 日历文件，AirDrop 到 iPhone 直接用。全平台 tesseract 引擎。
-version: 1.0.0
+version: 1.1.0
 metadata:
   openclaw:
     emoji: "📅"
@@ -17,13 +17,15 @@ metadata:
 
 ## 什么时候用
 
-用户贴了张课表截图，说想导进日历。
+用户给了课表图片/PDF/Word 文档，说想导进日历。
 
 ## 怎么跑
 
 ```bash
-python3 schedule2ics.py 图片路径 --name "张三 课表" --start 2026-02-23
+python3 schedule2ics.py 文件路径 --name "张三 课表" --start 2026-02-23
 ```
+
+支持 PNG JPG PDF DOCX，脚本自动识别类型。PDF 优先提取文本层，扫面件自动转图 OCR。
 
 然后按提示输课程，格式：
 
@@ -54,4 +56,9 @@ python3 schedule2ics.py 课表.png --slots "1-2=08:30-10:00;3-4=10:15-11:45"
 
 ## 依赖
 
-tesseract + 中文包。没装的话脚本会提示怎么装，三平台都支持。真的不想装也能纯手打。
+- tesseract + 中文包（图片 OCR 必须）
+- 处理 PDF/Word 的话额外装：
+  ```bash
+  pip install pdfplumber python-docx PyMuPDF
+  ```
+  不装也能跑——PDF 会回退到 pdftotext，扫面件转图 OCR，Word 文本直接读不着就提示。
